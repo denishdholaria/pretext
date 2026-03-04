@@ -447,8 +447,8 @@ export function prepare(text: string, font: string, lineHeight?: number): Prepar
 
   for (let mi = 0; mi < merged.length; mi++) {
     const seg = merged[mi]!
-    if (seg.isWordLike && isCJK(seg.text)) {
-      // Split CJK words into individual graphemes for per-character line breaks,
+    if (isCJK(seg.text)) {
+      // Split CJK segments into individual graphemes for per-character line breaks.
       // but apply kinsoku shori: merge line-start prohibited chars (，。etc.)
       // with the preceding grapheme, and line-end prohibited chars (（「etc.)
       // with the following grapheme. This prevents them from being separated.
