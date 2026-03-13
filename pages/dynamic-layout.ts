@@ -46,7 +46,6 @@ const HEADLINE_TEXT = 'SITUATIONAL AWARENESS: THE DECADE AHEAD'
 const HEADLINE_FONT_FAMILY = '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif'
 const OPENAI_LOGO_SRC = openaiLogoUrl
 const CLAUDE_LOGO_SRC = claudeLogoUrl
-const HEADLINE_WORDS = HEADLINE_TEXT.split(/\s+/)
 const HINT_PILL_SAFE_TOP = 72
 
 type LogoKind = 'openai' | 'claude'
@@ -119,7 +118,6 @@ type DomCache = {
 }
 
 const preparedByKey = new Map<string, PreparedTextWithSegments>()
-const measuredTextWidthByKey = new Map<string, number>()
 const scheduled = { value: false }
 const events: { mousemove: MouseEvent | null; click: MouseEvent | null; blur: boolean } = {
   mousemove: null,
@@ -143,14 +141,6 @@ const domCache: DomCache = {
   bodyLines: [],
 }
 let mounted = false
-
-function createMeasurementContext(): OffscreenCanvasRenderingContext2D {
-  const ctx = new OffscreenCanvas(1, 1).getContext('2d')
-  if (ctx === null) throw new Error('2d context unavailable for dynamic-layout text measurement')
-  return ctx
-}
-
-const measurementCtx = createMeasurementContext()
 
 function createHeadline(): HTMLHeadingElement {
   const element = document.createElement('h1')
@@ -193,6 +183,9 @@ const [, openaiLayout, claudeLayout, openaiHit, claudeHit] = await Promise.all([
   getWrapHull(CLAUDE_LOGO_SRC, { smoothRadius: 5, mode: 'mean' }),
 ])
 const wrapHulls: WrapHulls = { openaiLayout, claudeLayout, openaiHit, claudeHit }
+const preparedBody = getPrepared(BODY_COPY, BODY_FONT)
+const preparedCredit = getPrepared(CREDIT_TEXT, CREDIT_FONT)
+const creditWidth = Math.ceil(getPreparedSingleLineWidth(preparedCredit))
 
 function getTypography(): { font: string, lineHeight: number } {
   return { font: BODY_FONT, lineHeight: BODY_LINE_HEIGHT }
@@ -207,14 +200,11 @@ function getPrepared(text: string, font: string): PreparedTextWithSegments {
   return prepared
 }
 
-function measureSingleLineTextWidth(text: string, font: string): number {
-  const key = `${font}::${text}`
-  const cached = measuredTextWidthByKey.get(key)
-  if (cached !== undefined) return cached
-
-  measurementCtx.font = font
-  const width = measurementCtx.measureText(text).width
-  measuredTextWidthByKey.set(key, width)
+function getPreparedSingleLineWidth(prepared: PreparedTextWithSegments): number {
+  let width = 0
+  walkLineRanges(prepared, 100_000, line => {
+    width = line.width
+  })
   return width
 }
 
@@ -386,15 +376,8 @@ function fitHeadlineFontSize(headlineWidth: number, pageWidth: number): number {
   for (let iteration = 0; iteration < 10; iteration++) {
     const size = (low + high) / 2
     const font = `700 ${size}px ${HEADLINE_FONT_FAMILY}`
-    let widestWord = 0
-
-    for (const word of HEADLINE_WORDS) {
-      const width = measureSingleLineTextWidth(word, font)
-      if (width > widestWord) widestWord = width
-    }
-
     const headlinePrepared = getPrepared(HEADLINE_TEXT, font)
-    if (widestWord <= headlineWidth - 8 && !headlineBreaksInsideWord(headlinePrepared, headlineWidth)) {
+    if (!headlineBreaksInsideWord(headlinePrepared, headlineWidth)) {
       best = size
       low = size
     } else {
@@ -594,7 +577,6 @@ function evaluateLayout(
     verticalPadding: Math.round(lineHeight * 0.3),
   }
 
-  const creditWidth = Math.ceil(measureSingleLineTextWidth(CREDIT_TEXT, CREDIT_FONT))
   const creditBlocked = getObstacleIntervals(
     openaiObstacle,
     creditRegion.y,
@@ -679,7 +661,6 @@ function render(now: number): boolean {
   }
 
   const animating = updateSpinState(now)
-  const preparedBody = getPrepared(BODY_COPY, font)
   const layout = buildLayout(pageWidth, pageHeight, lineHeight)
   const { headlineLines, creditLeft, creditTop, leftLines, rightLines, hits } = evaluateLayout(layout, lineHeight, preparedBody)
 
