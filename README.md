@@ -1,87 +1,124 @@
-# pretext
+# Pretext
 
-Text measurement for the browser. Predicts text block heights without triggering layout reflow on the resize hot path.
+Pure JavaScript/TypeScript library for multiline text measurement & layout. Fast, accurate & supports all the languages you didn't even know about. Allows rendering to DOM, Canvas, SVG and soon, server-side.
 
-## Problem
+Pretext side-steps the need for DOM measurements (e.g. `getBoundingClientRect`, `offsetHeight`), which trigger layout reflow, one of the most expensive operations in the browser. It implements its own text measurement logic, using the browsers' own font engine as ground truth (very AI-friendly iteration method).
 
-Measuring text in the browser requires DOM reads (`getBoundingClientRect`, `offsetHeight`), which trigger synchronous layout reflow. When UI components independently measure text — e.g. a virtual scrolling list sizing 500 comments — each measurement forces the browser to recompute layout for the entire document. This creates read/write interleaving that can cost 30ms+ per frame.
+## Installation
 
-## Solution
+Still private for now. Clone the repo and run `bun install`.
 
-Two-phase measurement centered around canvas `measureText()`:
+## API
 
-```js
-import { prepare, layout, setLocale } from './src/layout.ts'
+Pretext serves 2 use cases:
 
-// Phase 1: measure word widths (once, when text appears)
-setLocale('th') // optional: pin Intl.Segmenter to the locale your app is laying out
-const block = prepare(commentText, '16px Inter')
+### 1. Measure a paragraph's height _without ever touching DOM_
 
-// Phase 2: compute height at any width (pure arithmetic, on every resize)
-const { height, lineCount } = layout(block, containerWidth, 19)
+```ts
+import { prepare, layout } from './src/layout.ts'
+
+const prepared = prepare('AGI 春天到了. بدأت الرحلة 🚀', '16px Inter')
+const { height, lineCount } = layout(prepared, textWidth, 20) // pure arithmetics. No DOM layout & reflow!
 ```
 
-`prepare()` does a one-time text analysis pass (whitespace normalization, segmentation, punctuation/CJK fixes), then measures the resulting segments via canvas and caches the widths. On browsers that need emoji correction, it also does one cached DOM calibration read per font. `layout()` walks the cached widths to count lines and multiplies by the caller-provided `lineHeight` — no canvas, no DOM, no string operations. Each `layout()` call is ~0.0002ms.
+`prepare()` does the one-time work: normalize whitespace, segment the text, apply glue rules, measure the segments with canvas, and return an opaque handle. `layout()` is the cheap hot path after that: pure arithmetic over cached widths.
 
-`prepare()` intentionally returns an opaque handle for the hot path. If you need the richer segment-level structure for diagnostics or custom line rendering, use `prepareWithSegments()` and treat that result as the experimental escape hatch. Rich-path helpers like `walkLineRanges()`, `layoutWithLines()`, and `layoutNextLine()` live there on purpose, so variable-width or custom userland layout experiments do not leak complexity into the fast height-estimate path.
+On the current local benchmark snapshot:
+- `prepare()` is about `17ms` for the shared 500-text batch
+- `layout()` is about `0.10ms` for that same batch
 
-If your app wants `Intl.Segmenter` to use a specific locale instead of the runtime default, call `setLocale(locale)` before future `prepare()` calls. `setLocale()` resets the shared caches and retargets the hoisted word segmenter for subsequent text analysis.
+We support all the languages you can imagine, including emojis and mixed-bidi, and caters to specific browser quirks
 
-## Practical uses
+The returned height is the crucial last piece for unlocking web UI's:
+- proper virtualization/occlusion without guesstimates & caching
+- fancy userland layouts: masonry, JS-driven flexbox-like implementations, nudging a few layout values without CSS hacks (imagine that), etc.
+- _development time_ verification (especially now with AI) that labels on e.g. buttons don't overflow to the next line, browser-free
+- prevent layout shift when new text loads and you wanna re-anchor the scroll position
 
-- Virtualized feeds and comment lists: predict row heights before mount so scrolling stays stable without DOM measurement passes.
-- Masonry or card grids: size text-heavy cards up front before placing them into columns.
-- Chat or messaging UIs: recompute bubble heights on every width change without touching the DOM layout engine.
-- Loading skeletons and cumulative layout shift reduction: reserve the right amount of vertical space before the final text renders.
-- Responsive card/layout decisions: switch between compact and expanded variants based on predicted text height.
-- Canvas or custom renderers: use `walkLineRanges()` when you want line geometry without materializing strings, `layoutWithLines()` when you want full line text plus cursors, or `layoutNextLine()` to advance one line at a time through a prepared paragraph when your userland layout wants a different width on each row.
+### 2. Lay out the paragraph lines manually yourself
 
-## Performance
+```ts
+import {
+  prepareWithSegments,
+  layoutNextLine,
+} from './src/layout.ts'
 
-`prepare()` is the one-time setup cost when text first appears. `layout()` is the resize hot path and stays very small relative to DOM measurement on the shared 500-text benchmark, while also keeping the long-form corpus rows practical enough for real use.
+const prepared = prepareWithSegments('AGI 春天到了. بدأت الرحلة 🚀', '18px "Helvetica Neue"')
+let cursor = { segmentIndex: 0, graphemeIndex: 0 }
+let y = 0
 
-See:
-- [STATUS.md](STATUS.md) for the current compact benchmark snapshot
-- [pages/benchmark-results.txt](pages/benchmark-results.txt) for the older checked-in cross-browser raw snapshot
-- [pages/benchmark.ts](pages/benchmark.ts) for the live benchmark harness
+for (const rowWidth of [320, 320, 260, 240, 320, 320]) {
+  const line = layoutNextLine(prepared, cursor, rowWidth)
+  if (line === null) break
+  drawText(line.text, 40, y)
+  cursor = line.end
+  y += 26
+}
+```
 
-## Accuracy
+This usage allows:
+- even fancier layout possibilities. See the [Dynamic Layout](/pages/dynamic-layout.html) demo.
+- rendering to canvas, SVG, WebGL and (eventually) server-side
 
-Tested across 4 fonts × 8 sizes × 8 widths × 30 i18n texts (7680 tests):
+This is the richer path:
+- `layout()` gives you the height of a fixed-width paragraph
+- `layoutNextLine()` lets you route text one row at a time when width changes as you go
+- `walkLineRanges()` is the fixed-width low-level geometry helper when you want ranges and widths without building strings
 
-| Browser | Match rate | Tests | Remaining mismatches |
-|---|---|---|---|
-| Chrome | 100.00% | 7680 | None on the current browser sweep |
-| Safari | 100.00% | 7680 | None on the current browser sweep |
-| Firefox | 100.00% | 7680 | None on the current browser sweep |
+That second case is how the richer demos work. See [/dynamic-layout.html](/dynamic-layout.html).
 
-Tested across 4 fonts (Helvetica Neue, Georgia, Verdana, Courier New) × 8 sizes × 8 widths × 30 i18n texts. See [STATUS.md](STATUS.md) for the compact current snapshot, [corpora/STATUS.md](corpora/STATUS.md) for the long-form corpus canaries, and [RESEARCH.md](RESEARCH.md) for the exploration log.
+### API Glossary
 
-## i18n
+Use-case 1 APIs:
+```ts
+prepare(text: string, font: string): PreparedText // one-time text analysis pass, returns an opaque value to pass to `layout()`. Make sure `font` is synced with your css `font` declaration shorthand (e.g. size, weight, style, family) for the text you're measuring. `font` is the same format as what you'd use for `myCanvasContext.font = ...`, e.g. `16px Inter`.
+layout(prepared: PreparedText, maxWidth: number, lineHeight: number): { height: number, lineCount: number } // calculates text height given a max width and lineHeight. Make sure `lineHeight` is synced with your css `line-height` declaration for the text you're measuring.
+```
 
-- **Line breaking**: `Intl.Segmenter` with `granularity: 'word'` handles CJK (per-character breaks), Thai, Arabic, and all scripts the browser supports.
-- **Bidi metadata**: the rich `prepareWithSegments()` path can attach simplified UAX #9-style embedding levels for mixed LTR/RTL custom rendering. Line breaking itself does not consume those levels, and pure LTR text still fast-paths with zero extra bidi work.
-- **Shaping**: canvas `measureText()` uses the browser's font engine, so ligatures, kerning, and contextual forms (Arabic connected letters) are handled correctly.
-- **Emoji**: auto-corrected. Chrome/Firefox canvas inflates emoji widths at small font sizes on macOS; the library detects and compensates automatically.
+Use-case 2 APIs:
+```ts
+prepareWithSegments(text: string, font: string): PreparedTextWithSegments // same as `prepare()`, but returns a richer structure for manual line layouts needs
+layoutWithLines(prepared: PreparedTextWithSegments, maxWidth: number, lineHeight: number): { height: number, lineCount: number, lines: LayoutLine[] } // high-level api for manual layout needs. Accepts a fixed max width for all lines. Similar to `layout()`'s return, but additionally returns the lines info
+walkLineRanges(prepared: PreparedTextWithSegments, maxWidth: number, onLine: (line: LayoutLineRange) => void): number // low-level api for manual layout needs. Accepts a fixed max width for all lines. Calls `onLine` once per line with its actual calculated line width and start/end cursors, without building line text strings. Very useful for certain cases where you wanna speculatively test a few width and height boundaries (e.g. binary search a nice width value by repeatedly calling walkLineRanges and checking the line count, and therefore height, is "nice" too. You can have text messages shrinkwrap and balanced text layout this way). After walkLineRanges calls, you'd call layoutWithLines once, with your satisfying max width, to get the actual lines info.
+layoutNextLine(prepared: PreparedTextWithSegments, cursor: LayoutCursor, width: number): LayoutLine | null // iterator-like api for layout each line with a different width! Returns the next LayoutLine, or `null` when the paragraph's exhausted
+type LayoutLine = {
+  text: string // Full text content of this line, e.g. 'hello world'
+  width: number // Measured width of this line, e.g. 87.5
+  start: LayoutCursor // Inclusive start cursor in prepared segments/graphemes
+  end: LayoutCursor // Exclusive end cursor in prepared segments/graphemes
+  trailingDiscretionaryHyphen: boolean // True when a visible trailing hyphen was inserted from a soft hyphen break
+}
+type LayoutLineRange = {
+  width: number // Measured width of this line, e.g. 87.5
+  start: LayoutCursor // Inclusive start cursor in prepared segments/graphemes
+  end: LayoutCursor // Exclusive end cursor in prepared segments/graphemes
+  trailingDiscretionaryHyphen: boolean // True when a visible trailing hyphen was inserted from a soft hyphen break
+}
+type LayoutCursor = {
+  segmentIndex: number // Segment index in on prepareWithSegments' prepared rich segment stream
+  graphemeIndex: number // Grapheme index within that segment; `0` at segment boundaries
+}
+```
 
-## Known limitations
+Other helpers:
+```ts
+clearCache(): void // clears Pretext's shared internal caches used by prepare() and prepareWithSegments(). Useful if your app cycles through many different fonts or text variants and you want to release the accumulated cache
+setLocale(locale?: string): void // optional (byu default we use the current locale). Sets locale for future prepare() and prepareWithSegments(). Internally, it also calls clearCache(). Setting a new locale doesn't affect existing prepare() and prepareWithSegments() states (no mutations to them)
+```
 
-- **CSS config**: targets a common app-text configuration (`white-space: normal`, `word-break: normal`, `overflow-wrap: break-word`, `line-break: auto`). Source newlines are treated as collapsible whitespace, not explicit `<br>`/paragraph breaks. Other configurations (`break-all`, `keep-all`, `strict`, `loose`, `anywhere`) are untested.
-- **In-word breaks**: because the default target includes `overflow-wrap: break-word`, very narrow widths may break inside words, but only at grapheme boundaries. The engine will not cut through raw UTF-16/code-unit boundaries or split an emoji cluster in half.
-- **`line-height`**: the library does not infer CSS line height. Pass the exact value you render with into `layout()` / `layoutWithLines()`. `line-height: normal` differs across fonts and browsers.
-- **Soft hyphens**: unbroken soft hyphens stay invisible, but if the engine chooses that break, the rich APIs expose a visible trailing `-`. `LayoutLine.trailingDiscretionaryHyphen` tells you when that hyphen was inserted by layout rather than coming from source text.
-- **`system-ui` font**: canvas and DOM resolve this CSS keyword to different font variants at certain sizes on macOS. Use a named font (Inter, Helvetica, Arial, etc.) for guaranteed accuracy. See [RESEARCH.md](RESEARCH.md#discovery-system-ui-font-resolution-mismatch).
-- **Server-side**: importing the module is now safe in non-DOM runtimes, but actual server-side measurement is still not zero-config. Calling `prepare()` without `OffscreenCanvas` or a DOM canvas path will still need an explicit canvas-backed backend. We keep a HarfBuzz (WASM) backend around for headless probes and research.
+## Caveats
 
-## How it works
+Pretext doesn't try to be a full font rendering engine (yet?). It currently targets the common text setup:
+- `white-space: normal`
+- `word-break: normal`
+- `overflow-wrap: break-word`
+- `system-ui` is unsafe for `layout()` accuracy on macOS. Use a named font
+- Because the default target includes `overflow-wrap: break-word`, very narrow widths can still break inside words, but only at grapheme boundaries.
 
-1. **Text analysis**: normalize collapsible whitespace, segment with `Intl.Segmenter('word')`, merge punctuation, and carry opening punctuation forward so browser break opportunities are modeled more closely.
-2. **CJK splitting + kinsoku**: CJK word segments are re-split into individual graphemes, since CSS allows line breaks between any CJK characters. Kinsoku shori rules keep CJK punctuation (，。「」 etc.) attached to their adjacent characters so they can't be separated across line breaks.
-3. **Measurement + caching**: each final segment is measured via canvas `measureText()` and cached in a per-font segment-metrics cache. Common words across texts share not just widths but lazily-derived segment data such as grapheme widths for breakable words. The cache has no eviction — it grows monotonically per font string. For a typical single-font comment feed this is a few KB; `clearCache()` exists for manual eviction if needed.
-4. **Emoji correction**: canvas `measureText` inflates emoji widths on Chrome/Firefox at font sizes <24px on macOS. Auto-detected by measuring a reference emoji; correction subtracted per emoji grapheme. Safari is unaffected (correction = 0).
-5. **Bidi metadata**: on the rich path, characters can be classified into bidi types and mapped to approximate embedding levels for custom rendering. Pure LTR text skips this entirely, and the line breaker itself does not read those levels.
-6. **Layout** (per resize): walk the cached widths, accumulate per line, break when exceeding `maxWidth`. Trailing whitespace hangs past the edge (CSS behavior). Non-space overflow (words, emoji, punctuation) triggers a line break. Segments wider than `maxWidth` are broken at grapheme boundaries.
+## Develop
 
-## Research
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the dev setup and commands.
 
-See [RESEARCH.md](RESEARCH.md) for the full exploration log: every approach we tried, benchmarks, the system-ui font discovery, punctuation accumulation error analysis, emoji width tables, HarfBuzz RTL bug, server-side engine comparison, and what Sebastian already knew.
+## Credits
+
+Sebastian Markbage first planted the seed with [text-layout](https://github.com/chenglou/text-layout) last decade. His design — canvas `measureText` for shaping, bidi from pdf.js, streaming line breaking — informed the architecture we kept pushing forward here.
