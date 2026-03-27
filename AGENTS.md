@@ -4,7 +4,8 @@ Internal notes for contributors and agents. Use `README.md` as the public source
 
 ### Commands
 
-- `bun start` — serve pages at http://localhost:3000 with full code reload (kills stale `:3000` listeners first)
+- `bun start` — serve pages at http://localhost:3000 without watch-mode reload (kills stale `:3000` listeners first)
+- `bun run start:watch` — same page server, but with Bun's watch/reload client when you explicitly want it
 - `bun run check` — typecheck + lint
 - `bun test` — lightweight invariant tests against the shipped implementation
 - `bun run accuracy-check` / `:safari` / `:firefox` — browser accuracy sweeps
@@ -75,7 +76,7 @@ Internal notes for contributors and agents. Use `README.md` as the public source
 - Accuracy/corpus/Gatsby checkers can use background-safe browser automation, but benchmark runs should stay foreground. Do not “optimize away” benchmark focus; throttled/background tabs make the numbers less trustworthy.
 - For deep perf or memory work, prefer an isolated debuggable Chrome over a pure Bun microbenchmark. Bun is fine for quick hypotheses, but Chrome profiling is the better source of truth for CPU hotspots, allocation churn, and retained-heap checks.
 - Refresh `benchmarks/chrome.json` and `benchmarks/safari.json` when a diff changes benchmark methodology or the text engine hot path (`src/analysis.ts`, `src/measurement.ts`, `src/line-break.ts`, `src/layout.ts`, `src/bidi.ts`, or `pages/benchmark.ts`). `STATUS.md` should stay a compact dashboard, not the only source of current benchmark numbers.
-- `bun start` is the live human-facing dev server and now runs with `--watch` (full code reload). The scripted checkers intentionally keep using `--no-hmr` temporary servers so their runs stay deterministic and easy to tear down.
+- `bun start` is the stable human-facing dev server. Use `bun run start:watch` only when you explicitly want Bun's watch/reload client. The scripted checkers intentionally keep using `--no-hmr` temporary servers so their runs stay deterministic and easy to tear down.
 - Do not run multiple browser corpus/sweep/font-matrix jobs in parallel against the same browser. The automation session and temporary page server paths interfere with each other and can make a healthy corpus look hung or flaky.
 - An `ERR_CONNECTION_REFUSED` tab on `localhost:3210` or a similar temporary checker port usually means you caught a per-run Bun server after teardown. That is expected after the script exits; it is not, by itself, evidence of a bad measurement.
 - Keep `src/layout.test.ts` small and durable. For browser-specific or narrow hypothesis work, prefer throwaway probes/scripts and promote only the stable invariants into permanent tests.
