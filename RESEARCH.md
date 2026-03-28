@@ -172,7 +172,7 @@ CSS `white-space: normal` lets trailing spaces "hang" past the line edge — the
 
 **Fix: when a space segment causes overflow, skip it** (don't break, don't add to lineW). This matches the CSS behavior: trailing spaces hang.
 
-## Discovery: preserving ordinary spaces is viable, but tabs are a separate problem
+## Discovery: preserving ordinary spaces, hard breaks, and numeric tab stops is viable
 
 For editor-style input, the smallest honest second mode was not “stop normalizing everything.” The browser probes were more specific:
 
@@ -183,12 +183,12 @@ For editor-style input, the smallest honest second mode was not “stop normaliz
 
 That led to a viable second mode: `{ whiteSpace: 'pre-wrap' }`, which preserves ordinary spaces and `\n` hard breaks while leaving the default `white-space: normal` path untouched.
 
-One tempting broader claim was rejected. Tabs are **not** solved by the current canvas architecture:
+Tabs needed one more step because raw canvas `measureText('\\t')` is not the browser behavior:
 
 - Chrome DOM `pre-wrap` tab width at default `tab-size: 8`: `35.56px`
 - Chrome canvas `measureText('\\t')`: `4.45px`
 
-So this mode currently normalizes tabs to ordinary spaces rather than pretending it is a full `pre-wrap` clone. That keeps the useful user-input case without quietly shipping a known measurement lie.
+The useful part is that the browser behavior itself turned out to be simple and stable in Chrome and Safari: tabs advance to the next multiple of `spaceWidth * tabSize` from the start of the current line, and they still hang at line end the same way preserved spaces do. So the second mode now keeps real `tab` segments and handles them in the line walker with pure arithmetic. The public shape is `{ whiteSpace: 'pre-wrap', tabSize?: number }`, with numeric tab stops only.
 
 One tooling caveat also showed up during validation: Safari `Range`-based probe extraction is less trustworthy for `pre-wrap` cases with preserved spaces or hard breaks. The height/line-count checks stayed exact, but the extracted line offsets could drift. For this mode, the span-based probe view was the better cross-check.
 

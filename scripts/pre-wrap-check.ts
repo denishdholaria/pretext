@@ -29,6 +29,7 @@ type OracleCase = {
   width: number
   font: string
   lineHeight: number
+  tabSize?: number
   dir?: 'ltr' | 'rtl'
   lang?: string
 }
@@ -126,6 +127,21 @@ const ORACLE_CASES: OracleCase[] = [
     dir: 'rtl',
     lang: 'ar',
   },
+  {
+    label: 'default tab stops',
+    text: 'a\tb',
+    width: 120,
+    font: '18px serif',
+    lineHeight: 32,
+  },
+  {
+    label: 'custom tab size',
+    text: 'a\tb',
+    width: 116,
+    font: '18px serif',
+    lineHeight: 32,
+    tabSize: 4,
+  },
 ]
 
 const requestedPort = parseNumberFlag('port', 0)
@@ -142,9 +158,10 @@ function buildProbeUrl(
   return (
     `${baseUrl}/probe?text=${encodeURIComponent(testCase.text)}` +
     `&width=${testCase.width}` +
-    `&font=${encodeURIComponent(testCase.font)}` +
-    `&lineHeight=${testCase.lineHeight}` +
-    `&dir=${encodeURIComponent(dir)}` +
+      `&font=${encodeURIComponent(testCase.font)}` +
+      `&lineHeight=${testCase.lineHeight}` +
+      (testCase.tabSize === undefined ? '' : `&tabSize=${testCase.tabSize}`) +
+      `&dir=${encodeURIComponent(dir)}` +
     `&lang=${encodeURIComponent(lang)}` +
     `&whiteSpace=pre-wrap` +
     `&method=span` +

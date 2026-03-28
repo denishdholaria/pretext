@@ -58,6 +58,7 @@ type ProbeReport = {
   requestId?: string
   text?: string
   whiteSpace?: 'normal' | 'pre-wrap'
+  tabSize?: number
   width?: number
   contentWidth?: number
   font?: string
@@ -99,6 +100,12 @@ const lang = params.get('lang') ?? (direction === 'rtl' ? 'ar' : 'en')
 const browserLineMethod = params.get('method') === 'span' ? 'span' : 'range'
 const verbose = params.get('verbose') === '1'
 const whiteSpace = params.get('whiteSpace') === 'pre-wrap' ? 'pre-wrap' : 'normal'
+const tabSize = (() => {
+  const raw = params.get('tabSize')
+  if (raw === null) return undefined
+  const parsed = Number.parseFloat(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+})()
 const cssWhiteSpace = whiteSpace === 'pre-wrap' ? 'pre-wrap' : 'normal'
 
 const stats = document.getElementById('stats')!
@@ -172,7 +179,7 @@ function getBrowserLinesFromSpans(prepared: PreparedTextWithSegments, measuredFo
       end: currentEnd,
       contentEnd: content.end,
       fullWidth: measureCanvasTextWidth(diagnosticCtx, content.text, measuredFont),
-      domWidth: measureDomTextWidth(document, content.text, measuredFont, dir),
+      domWidth: measureDomTextWidth(document, content.text, measuredFont, dir, tabSize),
     })
   }
 
@@ -235,7 +242,7 @@ function getBrowserLinesFromRange(prepared: PreparedTextWithSegments, measuredFo
       end: currentEnd,
       contentEnd: content.end,
       fullWidth: measureCanvasTextWidth(diagnosticCtx, content.text, measuredFont),
-      domWidth: measureDomTextWidth(document, content.text, measuredFont, dir),
+      domWidth: measureDomTextWidth(document, content.text, measuredFont, dir, tabSize),
     })
   }
 
@@ -326,7 +333,7 @@ function getPublicLines(
       end,
       contentEnd,
       fullWidth: measureCanvasTextWidth(diagnosticCtx, content.text, measuredFont),
-      domWidth: measureDomTextWidth(document, content.text, measuredFont, direction),
+      domWidth: measureDomTextWidth(document, content.text, measuredFont, direction, tabSize),
       sumWidth: measurePreparedSlice(prepared, start, contentEnd, measuredFont),
     }
   })
@@ -434,6 +441,7 @@ function init(): void {
     book.style.padding = `${PADDING}px`
     book.style.width = `${width}px`
     book.style.whiteSpace = cssWhiteSpace
+    if (tabSize !== undefined) book.style.tabSize = String(tabSize)
 
     diagnosticDiv.textContent = text
     diagnosticDiv.lang = lang
@@ -443,8 +451,12 @@ function init(): void {
     diagnosticDiv.style.padding = `${PADDING}px`
     diagnosticDiv.style.width = `${width}px`
     diagnosticDiv.style.whiteSpace = cssWhiteSpace
+    if (tabSize !== undefined) diagnosticDiv.style.tabSize = String(tabSize)
 
-    const prepared = prepareWithSegments(text, font, { whiteSpace })
+    const prepared = prepareWithSegments(text, font, {
+      whiteSpace,
+      ...(tabSize === undefined ? {} : { tabSize }),
+    })
     const normalizedText = prepared.segments.join('')
     const contentWidth = width - PADDING * 2
     const predicted = layout(prepared, contentWidth, lineHeight)
@@ -480,6 +492,7 @@ function init(): void {
       alternateBrowserLineCount: alternateBrowserLines.length,
       alternateFirstBreakMismatch,
       extractorSensitivity,
+      ...(tabSize === undefined ? {} : { tabSize }),
       ...(verbose ? {
         ourLines: summarizeLines(ourLines),
         browserLines: summarizeLines(browserLines),

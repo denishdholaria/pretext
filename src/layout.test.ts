@@ -74,6 +74,12 @@ function measureWidth(text: string, font: string): number {
   return width
 }
 
+function nextTabAdvance(lineWidth: number, spaceWidth: number, tabSize = 8): number {
+  const tabStopAdvance = spaceWidth * tabSize
+  const remainder = lineWidth % tabStopAdvance
+  return remainder === 0 ? tabStopAdvance : tabStopAdvance - remainder
+}
+
 class TestCanvasRenderingContext2D {
   font = ''
 
@@ -141,10 +147,10 @@ describe('prepare invariants', () => {
     expect(prepared.kinds).toEqual(['text', 'hard-break', 'text'])
   })
 
-  test('pre-wrap mode normalizes tabs to ordinary spaces for now', () => {
+  test('pre-wrap mode keeps tabs as explicit segments', () => {
     const prepared = prepareWithSegments('Hello\tWorld', FONT, { whiteSpace: 'pre-wrap' })
-    expect(prepared.segments).toEqual(['Hello', ' ', 'World'])
-    expect(prepared.kinds).toEqual(['text', 'preserved-space', 'text'])
+    expect(prepared.segments).toEqual(['Hello', '\t', 'World'])
+    expect(prepared.kinds).toEqual(['text', 'tab', 'text'])
   })
 
   test('keeps non-breaking spaces as glue instead of collapsing them away', () => {
@@ -466,6 +472,35 @@ describe('layout invariants', () => {
     const lines = layoutWithLines(prepared, 200, LINE_HEIGHT)
     expect(lines.lines.map(line => line.text)).toEqual(['a', 'b'])
     expect(layout(prepared, 200, LINE_HEIGHT).lineCount).toBe(2)
+  })
+
+  test('pre-wrap mode treats tabs as hanging whitespace aligned to tab stops', () => {
+    const prepared = prepareWithSegments('a\tb', FONT, { whiteSpace: 'pre-wrap' })
+    const spaceWidth = measureWidth(' ', FONT)
+    const prefixWidth = measureWidth('a', FONT)
+    const tabAdvance = nextTabAdvance(prefixWidth, spaceWidth, 8)
+    const textWidth = prefixWidth + tabAdvance + measureWidth('b', FONT)
+    const width = textWidth - 0.1
+
+    const lines = layoutWithLines(prepared, width, LINE_HEIGHT)
+    expect(lines.lines.map(line => line.text)).toEqual(['a\t', 'b'])
+    expect(layout(prepared, width, LINE_HEIGHT).lineCount).toBe(2)
+  })
+
+  test('pre-wrap mode respects custom tabSize', () => {
+    const smallTabs = prepareWithSegments('a\tb', FONT, { whiteSpace: 'pre-wrap', tabSize: 4 })
+    const largeTabs = prepareWithSegments('a\tb', FONT, { whiteSpace: 'pre-wrap', tabSize: 8 })
+    const spaceWidth = measureWidth(' ', FONT)
+    const prefixWidth = measureWidth('a', FONT)
+    const suffixWidth = measureWidth('b', FONT)
+    const widthForSmallTabs =
+      prefixWidth + nextTabAdvance(prefixWidth, spaceWidth, 4) + suffixWidth
+    const widthForLargeTabs =
+      prefixWidth + nextTabAdvance(prefixWidth, spaceWidth, 8) + suffixWidth
+    const width = (widthForSmallTabs + widthForLargeTabs) / 2
+
+    expect(layout(smallTabs, width, LINE_HEIGHT).lineCount).toBe(1)
+    expect(layout(largeTabs, width, LINE_HEIGHT).lineCount).toBe(2)
   })
 
   test('layoutNextLine stays aligned with layoutWithLines in pre-wrap mode', () => {

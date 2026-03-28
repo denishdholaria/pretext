@@ -4,6 +4,7 @@ export type SegmentBreakKind =
   | 'text'
   | 'space'
   | 'preserved-space'
+  | 'tab'
   | 'glue'
   | 'zero-width-break'
   | 'soft-hyphen'
@@ -66,10 +67,9 @@ export function normalizeWhitespaceNormal(text: string): string {
 }
 
 function normalizeWhitespacePreWrap(text: string): string {
-  if (!/[\r\f\t]/.test(text)) return text.replace(/\r\n/g, '\n')
+  if (!/[\r\f]/.test(text)) return text.replace(/\r\n/g, '\n')
   return text
     .replace(/\r\n/g, '\n')
-    .replace(/\t/g, ' ')
     .replace(/[\r\f]/g, '\n')
 }
 
@@ -321,6 +321,7 @@ export function endsWithClosingQuote(text: string): boolean {
 function classifySegmentBreakChar(ch: string, whiteSpaceProfile: WhiteSpaceProfile): SegmentBreakKind {
   if (whiteSpaceProfile.preserveOrdinarySpaces || whiteSpaceProfile.preserveHardBreaks) {
     if (ch === ' ') return 'preserved-space'
+    if (ch === '\t') return 'tab'
     if (whiteSpaceProfile.preserveHardBreaks && ch === '\n') return 'hard-break'
   }
   if (ch === ' ') return 'space'

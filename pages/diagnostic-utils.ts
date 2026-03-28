@@ -58,6 +58,7 @@ export function measureDomTextWidth(
   text: string,
   font: string,
   direction: string,
+  tabSize?: number,
 ): number {
   const span = doc.createElement('span')
   span.style.position = 'absolute'
@@ -66,6 +67,7 @@ export function measureDomTextWidth(
   span.style.font = font
   span.style.direction = direction
   span.style.unicodeBidi = 'plaintext'
+  if (tabSize !== undefined) span.style.tabSize = String(tabSize)
   span.textContent = text
   doc.body.appendChild(span)
   const width = span.getBoundingClientRect().width
