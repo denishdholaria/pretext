@@ -303,8 +303,18 @@ describe('prepare invariants', () => {
 
   test('pre-wrap mode keeps ordinary spaces instead of collapsing them', () => {
     const prepared = prepareWithSegments('  Hello   World  ', FONT, { whiteSpace: 'pre-wrap' })
-    expect(prepared.segments).toEqual(['  ', 'Hello', '   ', 'World', '  '])
-    expect(prepared.kinds).toEqual(['preserved-space', 'text', 'preserved-space', 'text', 'preserved-space'])
+    expect(prepared.segments).toEqual([' ', ' ', 'Hello', ' ', ' ', ' ', 'World', ' ', ' '])
+    expect(prepared.kinds).toEqual([
+      'preserved-space',
+      'preserved-space',
+      'text',
+      'preserved-space',
+      'preserved-space',
+      'preserved-space',
+      'text',
+      'preserved-space',
+      'preserved-space',
+    ])
   })
 
   test('pre-wrap mode keeps hard breaks as explicit segments', () => {
@@ -989,9 +999,9 @@ describe('layout invariants', () => {
     const prepared = prepareWithSegments('foo   bar', FONT, { whiteSpace: 'pre-wrap' })
     const width = measureWidth('foo', FONT) + 0.1
     const lines = layoutWithLines(prepared, width, LINE_HEIGHT)
-    expect(lines.lineCount).toBe(2)
-    expect(lines.lines.map(line => line.text)).toEqual(['foo   ', 'bar'])
-    expect(layout(prepared, width, LINE_HEIGHT).lineCount).toBe(2)
+    expect(lines.lines.length).toBe(3)
+    expect(lines.lines.map(line => line.text)).toEqual(['foo ', '  ', 'bar'])
+    expect(layout(prepared, width, LINE_HEIGHT).lineCount).toBe(3)
   })
 
   test('pre-wrap mode treats hard breaks as forced line boundaries', () => {

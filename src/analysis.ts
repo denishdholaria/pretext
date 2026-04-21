@@ -469,7 +469,13 @@ function splitSegmentByBreakKind(
     const kind = classifySegmentBreakChar(ch, whiteSpaceProfile)
     const wordLike = kind === 'text' && isWordLike
 
-    if (currentKind !== null && kind === currentKind && wordLike === currentWordLike) {
+    if (
+      currentKind !== null &&
+      kind === currentKind &&
+      wordLike === currentWordLike &&
+      kind !== 'preserved-space' &&
+      kind !== 'tab'
+    ) {
       currentTextParts.push(ch)
       offset += ch.length
       continue
