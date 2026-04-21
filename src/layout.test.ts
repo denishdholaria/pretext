@@ -484,11 +484,24 @@ describe('prepare invariants', () => {
 
   test('keeps URL-like runs together as one breakable segment', () => {
     const prepared = prepareWithSegments('see https://example.com/reports/q3?lang=ar&mode=full now', FONT)
+    // URLs are now fragmented at delimiters to allow better wrapping
     expect(prepared.segments).toEqual([
       'see',
       ' ',
-      'https://example.com/reports/q3?',
-      'lang=ar&mode=full',
+      'https:',
+      '//',
+      'example.com',
+      '/',
+      'reports',
+      '/',
+      'q3?',
+      'lang',
+      '=',
+      'ar',
+      '&',
+      'mode',
+      '=',
+      'full',
       ' ',
       'now',
     ])

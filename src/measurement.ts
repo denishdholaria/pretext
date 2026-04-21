@@ -280,4 +280,5 @@ export function clearMeasurementCaches(): void {
   segmentMetricCaches.clear()
   emojiCorrectionCache.clear()
   sharedGraphemeSegmenter = null
+  measureContext = null
 }
